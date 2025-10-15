@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Öğrenci Scratch Projeleri</title>
+  <style>
+    :root { --bg:#0b1020; --card:#121936; --muted:#9fb0ff; --text:#eaf0ff; }
+    *{box-sizing:border-box} body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radial-gradient(1200px 600px at 20% -10%, #1a2a6c55, transparent),radial-gradient(900px 500px at 110% 20%, #b21f1f33, transparent),var(--bg);color:var(--text)}
+    header{position:sticky;top:0;background:linear-gradient(180deg,#0b1020dd,#0b102000);backdrop-filter:saturate(1.2) blur(6px);z-index:10}
+    .wrap{max-width:1100px;margin:auto;padding:24px}
+    h1{margin:0 0 8px;font-size:clamp(22px,3.5vw,34px)}
+    .muted{color:var(--muted);opacity:.9}
+    .toolbar{display:grid;grid-template-columns:1fr 220px 140px;gap:12px;align-items:center;margin-top:14px}
+    input,select{width:100%;padding:12px 14px;border-radius:14px;border:1px solid #334;outline:none;background:#0f1533;color:var(--text);box-shadow:inset 0 0 0 1px #1b234a}
+    main{padding:18px 24px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+    .card{background:linear-gradient(180deg,#141c3f,#0e1430);border:1px solid #273062;border-radius:18px;padding:14px;box-shadow:0 12px 30px #0006;display:flex;flex-direction:column;gap:8px}
+    .card h3{margin:2px 0 0;font-size:18px}
+    .card .sub{font-size:13px;color:#a9b7ff}
+    .links{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+    .btn{appearance:none;border:1px solid #3b4aa0;background:#11183c;color:var(--text);padding:8px 12px;border-radius:12px;text-decoration:none;transition:transform .12s ease, background .2s}
+    .btn:hover{transform:translateY(-1px)}
+    .empty{opacity:.85;padding:24px;border:1px dashed #354078;border-radius:16px;background:#0f1533}
+    footer{padding:30px;color:#a3afff;opacity:.9;text-align:center}
+    .badge{font-size:12px;border:1px solid #4150a8;border-radius:999px;padding:2px 8px;background:#10163a;color:#cdd6ff}
+    .loading{display:none}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>Dijital Oyun Tasarımı Projeleri</h1>
+      <div class="muted">GitHub → Netlify üzerinden otomatik listeleme</div>
+      <div class="toolbar">
+        <input id="q" type="search" placeholder="Ada, projeye, etikete göre ara… (örn: 'maze', 'Ahmet')" />
+        <select id="studentFilter"><option value="">Tüm öğrenciler</option></select>
+        <select id="sortSel">
+          <option value="recent">Yeniden → eskiye</option>
+          <option value="alpha">Ada göre (A→Z)</option>
+        </select>
+      </div>
+      <div class="muted" style="margin-top:8px;font-size:13px">
+        <span class="badge">Not</span> Klasör yapınız: <code>/students/&lt;ogrenci&gt;/&lt;proje&gt;/index.html</code>. TurboWarp ile üretilen <code>index.html</code> dosyasını proje klasörüne koyun.
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="stats" class="muted" style="margin-bottom:10px"></div>
+    <div id="loading" class="loading muted">Yükleniyor…</div>
+    <div id="list" class="grid"></div>
+    <div id="empty" class="empty" style="display:none">Hiç sonuç yok. Filtreleri temizlemeyi deneyin.</div>
+  </main>
+
+  <footer>
+    <div>Site, klasörleri GitHub API üzerinden okur ve Netlify üzerinde linkleri çalıştırır.</div>
+  </footer>
+
+<script>
+/**
+ * ---- KURULUM ----
+ * Aşağıdaki üç sabiti kendi deponuza göre doldurun.
+ * Depo public olmalı (önerilir). Özel ise GitHub token ile istek atmanız gerekir.
+ */
+const GH_OWNER = "csbilsem"; // örn: bilsem-bt
+const GH_REPO  = "dijitaloyun2025"; // örn: scratch-oyunlar
+const BASE_PATH = "students"; // öğrencilerin olduğu kök klasör
+
+/**
+ * Eğer site kökü Netlify'da repo kökü ise projeler /students/... altında 
+ * yayınlanır. Play linkleri göreli (relative) verilir, Netlify'da doğrudan çalışır.
+ */
+
+const state = { entries: [], filtered: [], students: new Set() };
+
+const $ = (s) => document.querySelector(s);
+const listEl = $("#list");
+const emptyEl = $("#empty");
+const statsEl = $("#stats");
+const qEl = $("#q");
+const studentSel = $("#studentFilter");
+const sortSel = $("#sortSel");
+
+// Basit caching
+const cache = new Map();
+async function gh(path){
+  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(path)}`;
+  if(cache.has(url)) return cache.get(url);
+  const r = await fetch(url,{headers:{'Accept':'application/vnd.github+json'}});
+  if(!r.ok) throw new Error("GitHub API hatası: "+r.status);
+  const j = await r.json();
+  cache.set(url,j);
+  return j;
+}
+
+function slugToName(s){
+  // klasör adlarını okunur hale getir: "ahmet_k" → "Ahmet K"
+  return s.replace(/[-_]+/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+}
+
+async function scan(){
+  $("#loading").style.display = "block";
+  try{
+    const students = await gh(BASE_PATH);
+    const entries = [];
+    for(const stu of students){
+      if(stu.type!=="dir") continue;
+      state.students.add(stu.name);
+      const projects = await gh(`${BASE_PATH}/${stu.name}`);
+      for(const prj of projects){
+        if(prj.type!=="dir") continue;
+        // index.html var mı kontrol (opsiyonel)
+        let hasIndex = true;
+        try{ const files = await gh(`${BASE_PATH}/${stu.name}/${prj.name}`); hasIndex = files.some(f=>f.name.toLowerCase()==='index.html'); }
+        catch(e){ hasIndex=false; }
+        entries.push({
+          student: stu.name,
+          project: prj.name,
+          title: slugToName(prj.name),
+          studentLabel: slugToName(stu.name),
+          url: `/${BASE_PATH}/${stu.name}/${prj.name}/`,
+          hasIndex,
+          // created_at: bilinmiyor → projeyi klasör adına göre tahmini tarihleme yapılabilir; burada yok
+        });
+      }
+    }
+    state.entries = entries.filter(e=>e.hasIndex);
+    renderFilters();
+    applyFilters();
+  }catch(err){
+    console.error(err);
+    listEl.innerHTML = `<div class="empty">GitHub erişimi sırasında hata oluştu: ${err.message}.<br>GH_OWNER, GH_REPO ve klasör yapısını kontrol edin.</div>`;
+  }finally{
+    $("#loading").style.display = "none";
+  }
+}
+
+function renderFilters(){
+  // Öğrenci filtresi doldur
+  const opts = ["<option value=''>Tüm öğrenciler</option>", ...Array.from(state.students).sort().map(s=>`<option value="${s}">${slugToName(s)}</option>`)];
+  studentSel.innerHTML = opts.join("");
+}
+
+function applyFilters(){
+  const q = qEl.value.trim().toLowerCase();
+  const stu = studentSel.value;
+  let arr = [...state.entries];
+  if(q){ arr = arr.filter(e => (e.title+" "+e.studentLabel).toLowerCase().includes(q)); }
+  if(stu){ arr = arr.filter(e => e.student===stu); }
+  // Sıralama
+  const mode = sortSel.value;
+  if(mode==='alpha') arr.sort((a,b)=>a.title.localeCompare(b.title,'tr'));
+  else arr.sort((a,b)=>a.studentLabel.localeCompare(b.studentLabel,'tr') || a.title.localeCompare(b.title,'tr'));
+  state.filtered = arr;
+  render();
+}
+
+function render(){
+  statsEl.textContent = `${state.filtered.length} proje · ${state.students.size} öğrenci`;
+  if(state.filtered.length===0){ emptyEl.style.display='block'; listEl.innerHTML=''; return; }
+  emptyEl.style.display='none';
+  listEl.innerHTML = state.filtered.map(e=>`
+    <article class="card">
+      <div class="sub">${e.studentLabel}</div>
+      <h3>${e.title}</h3>
+      <div class="links">
+        <a class="btn" href="${e.url}" target="_blank" rel="noopener">▶ Oyna</a>
+        <a class="btn" href="https://github.com/${GH_OWNER}/${GH_REPO}/tree/main/${BASE_PATH}/${e.student}/${e.project}" target="_blank" rel="noopener">Kaynak (GitHub)</a>
+      </div>
+    </article>
+  `).join("");
+}
+
+qEl.addEventListener('input', applyFilters);
+studentSel.addEventListener('change', applyFilters);
+sortSel.addEventListener('change', applyFilters);
+
+scan();
+</script>
+</body>
+</html>
