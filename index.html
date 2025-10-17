@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Öğrenci Scratch Projeleri</title>
+  <title>Dijital Oyun Tasarımı Projeleri</title>
   <style>
     :root { --bg:#0b1020; --card:#121936; --muted:#9fb0ff; --text:#eaf0ff; }
     *{box-sizing:border-box} body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;background:radial-gradient(1200px 600px at 20% -10%, #1a2a6c55, transparent),radial-gradient(900px 500px at 110% 20%, #b21f1f33, transparent),var(--bg);color:var(--text)}
@@ -31,7 +31,6 @@
   <header>
     <div class="wrap">
       <h1>Dijital Oyun Tasarımı Projeleri</h1>
-      <div class="muted">GitHub → Netlify üzerinden otomatik listeleme</div>
       <div class="toolbar">
         <input id="q" type="search" placeholder="Ada, projeye, etikete göre ara… (örn: 'maze', 'Ahmet')" />
         <select id="studentFilter"><option value="">Tüm öğrenciler</option></select>
@@ -39,9 +38,6 @@
           <option value="recent">Yeniden → eskiye</option>
           <option value="alpha">Ada göre (A→Z)</option>
         </select>
-      </div>
-      <div class="muted" style="margin-top:8px;font-size:13px">
-        <span class="badge">Not</span> Klasör yapınız: <code>/students/&lt;ogrenci&gt;/&lt;proje&gt;/index.html</code>. TurboWarp ile üretilen <code>index.html</code> dosyasını proje klasörüne koyun.
       </div>
     </div>
   </header>
@@ -53,24 +49,10 @@
     <div id="empty" class="empty" style="display:none">Hiç sonuç yok. Filtreleri temizlemeyi deneyin.</div>
   </main>
 
-  <footer>
-    <div>Site, klasörleri GitHub API üzerinden okur ve Netlify üzerinde linkleri çalıştırır.</div>
-  </footer>
-
 <script>
-/**
- * ---- KURULUM ----
- * Aşağıdaki üç sabiti kendi deponuza göre doldurun.
- * Depo public olmalı (önerilir). Özel ise GitHub token ile istek atmanız gerekir.
- */
-const GH_OWNER = "csbilsem"; // örn: bilsem-bt
-const GH_REPO  = "dijitaloyun2025"; // örn: scratch-oyunlar
-const BASE_PATH = "students"; // öğrencilerin olduğu kök klasör
-
-/**
- * Eğer site kökü Netlify'da repo kökü ise projeler /students/... altında 
- * yayınlanır. Play linkleri göreli (relative) verilir, Netlify'da doğrudan çalışır.
- */
+const GH_OWNER = "KENDI-KULLANICI-ADI-VEYA-ORGANIZASYON";
+const GH_REPO  = "KENDI-REPO-ADI";
+const BASE_PATH = "students";
 
 const state = { entries: [], filtered: [], students: new Set() };
 
@@ -82,7 +64,6 @@ const qEl = $("#q");
 const studentSel = $("#studentFilter");
 const sortSel = $("#sortSel");
 
-// Basit caching
 const cache = new Map();
 async function gh(path){
   const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${encodeURIComponent(path)}`;
@@ -95,7 +76,6 @@ async function gh(path){
 }
 
 function slugToName(s){
-  // klasör adlarını okunur hale getir: "ahmet_k" → "Ahmet K"
   return s.replace(/[-_]+/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
 }
 
@@ -110,7 +90,6 @@ async function scan(){
       const projects = await gh(`${BASE_PATH}/${stu.name}`);
       for(const prj of projects){
         if(prj.type!=="dir") continue;
-        // index.html var mı kontrol (opsiyonel)
         let hasIndex = true;
         try{ const files = await gh(`${BASE_PATH}/${stu.name}/${prj.name}`); hasIndex = files.some(f=>f.name.toLowerCase()==='index.html'); }
         catch(e){ hasIndex=false; }
@@ -121,7 +100,6 @@ async function scan(){
           studentLabel: slugToName(stu.name),
           url: `/${BASE_PATH}/${stu.name}/${prj.name}/`,
           hasIndex,
-          // created_at: bilinmiyor → projeyi klasör adına göre tahmini tarihleme yapılabilir; burada yok
         });
       }
     }
@@ -137,7 +115,6 @@ async function scan(){
 }
 
 function renderFilters(){
-  // Öğrenci filtresi doldur
   const opts = ["<option value=''>Tüm öğrenciler</option>", ...Array.from(state.students).sort().map(s=>`<option value="${s}">${slugToName(s)}</option>`)];
   studentSel.innerHTML = opts.join("");
 }
@@ -148,7 +125,6 @@ function applyFilters(){
   let arr = [...state.entries];
   if(q){ arr = arr.filter(e => (e.title+" "+e.studentLabel).toLowerCase().includes(q)); }
   if(stu){ arr = arr.filter(e => e.student===stu); }
-  // Sıralama
   const mode = sortSel.value;
   if(mode==='alpha') arr.sort((a,b)=>a.title.localeCompare(b.title,'tr'));
   else arr.sort((a,b)=>a.studentLabel.localeCompare(b.studentLabel,'tr') || a.title.localeCompare(b.title,'tr'));
@@ -166,7 +142,6 @@ function render(){
       <h3>${e.title}</h3>
       <div class="links">
         <a class="btn" href="${e.url}" target="_blank" rel="noopener">▶ Oyna</a>
-        <a class="btn" href="https://github.com/${GH_OWNER}/${GH_REPO}/tree/main/${BASE_PATH}/${e.student}/${e.project}" target="_blank" rel="noopener">Kaynak (GitHub)</a>
       </div>
     </article>
   `).join("");
